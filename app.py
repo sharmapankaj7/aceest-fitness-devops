@@ -1,13 +1,19 @@
 """
 ACEest Fitness & Gym — Flask Web Application
 =============================================
-A Flask web application for fitness and gym management.
-Provides RESTful API endpoints for managing fitness programs.
+A modular Flask web application for fitness and gym management.
+Provides RESTful API endpoints for managing clients, fitness programs,
+and calorie estimation.
 """
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory data stores
+# ---------------------------------------------------------------------------
+clients_db: dict = {}          # {name: {age, weight, program, calories}}
 
 # ---------------------------------------------------------------------------
 # Fitness program catalogue
@@ -76,6 +82,125 @@ def get_program(program_name: str):
     if program is None:
         return jsonify({"error": f"Program '{program_name}' not found"}), 404
     return jsonify({program_name: program}), 200
+
+
+# ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
+def calculate_calories(weight: float, program_name: str) -> int:
+    """Return estimated daily calorie target for a client.
+
+    Formula: weight (kg) × programme-specific factor.
+    Returns 0 when the programme is unknown.
+    """
+    program = PROGRAMS.get(program_name)
+    if program is None:
+        return 0
+    return int(weight * program["factor"])
+
+
+def validate_client_payload(data: dict) -> str | None:
+    """Validate the JSON payload for creating / updating a client.
+
+    Returns an error message string if validation fails, else ``None``.
+    """
+    if not data:
+        return "Request body must be JSON"
+    if not data.get("name"):
+        return "Client name is required"
+    if not data.get("program"):
+        return "Fitness program is required"
+    if data["program"] not in PROGRAMS:
+        return f"Unknown program '{data['program']}'. Choose from: {', '.join(PROGRAMS)}"
+    weight = data.get("weight", 0)
+    if not isinstance(weight, (int, float)) or weight <= 0:
+        return "Weight must be a positive number"
+    age = data.get("age", 0)
+    if not isinstance(age, (int, float)) or age <= 0:
+        return "Age must be a positive number"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Routes — Clients
+# ---------------------------------------------------------------------------
+
+@app.route("/clients", methods=["GET"])
+def get_clients():
+    """Return all registered clients."""
+    return jsonify(clients_db), 200
+
+
+@app.route("/clients/<name>", methods=["GET"])
+def get_client(name: str):
+    """Retrieve a single client by name."""
+    client = clients_db.get(name)
+    if client is None:
+        return jsonify({"error": f"Client '{name}' not found"}), 404
+    return jsonify({name: client}), 200
+
+
+@app.route("/clients", methods=["POST"])
+def create_client():
+    """Register a new client.
+
+    Expected JSON body::
+
+        {
+            "name": "John",
+            "age": 25,
+            "weight": 75.0,
+            "program": "Fat Loss"
+        }
+    """
+    data = request.get_json(silent=True)
+    error = validate_client_payload(data)
+    if error:
+        return jsonify({"error": error}), 400
+
+    name = data["name"]
+    if name in clients_db:
+        return jsonify({"error": f"Client '{name}' already exists"}), 409
+
+    calories = calculate_calories(data["weight"], data["program"])
+    clients_db[name] = {
+        "age": int(data["age"]),
+        "weight": float(data["weight"]),
+        "program": data["program"],
+        "calories": calories,
+    }
+    return jsonify({"message": f"Client '{name}' created", "client": clients_db[name]}), 201
+
+
+@app.route("/clients/<name>", methods=["PUT"])
+def update_client(name: str):
+    """Update an existing client's details."""
+    if name not in clients_db:
+        return jsonify({"error": f"Client '{name}' not found"}), 404
+
+    data = request.get_json(silent=True)
+    error = validate_client_payload(data)
+    if error:
+        return jsonify({"error": error}), 400
+
+    calories = calculate_calories(data["weight"], data["program"])
+    clients_db[name] = {
+        "age": int(data["age"]),
+        "weight": float(data["weight"]),
+        "program": data["program"],
+        "calories": calories,
+    }
+    return jsonify({"message": f"Client '{name}' updated", "client": clients_db[name]}), 200
+
+
+@app.route("/clients/<name>", methods=["DELETE"])
+def delete_client(name: str):
+    """Remove a client by name."""
+    if name not in clients_db:
+        return jsonify({"error": f"Client '{name}' not found"}), 404
+    del clients_db[name]
+    return jsonify({"message": f"Client '{name}' deleted"}), 200
 
 
 if __name__ == "__main__":
