@@ -14,6 +14,7 @@ app = Flask(__name__)
 # In-memory data stores
 # ---------------------------------------------------------------------------
 clients_db: dict = {}          # {name: {age, weight, program, calories}}
+progress_db: list = []         # [{client_name, week, adherence}]
 
 # ---------------------------------------------------------------------------
 # Fitness program catalogue
@@ -54,7 +55,7 @@ def index():
     """Health-check / welcome endpoint."""
     return jsonify({
         "application": "ACEest Fitness & Gym",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "running",
     })
 
@@ -201,6 +202,83 @@ def delete_client(name: str):
         return jsonify({"error": f"Client '{name}' not found"}), 404
     del clients_db[name]
     return jsonify({"message": f"Client '{name}' deleted"}), 200
+
+
+# ---------------------------------------------------------------------------
+# Routes — Progress tracking
+# ---------------------------------------------------------------------------
+
+@app.route("/progress", methods=["GET"])
+def get_all_progress():
+    """Return all progress records, optionally filtered by client_name query param."""
+    client_name = request.args.get("client_name")
+    if client_name:
+        filtered = [p for p in progress_db if p["client_name"] == client_name]
+        return jsonify(filtered), 200
+    return jsonify(progress_db), 200
+
+
+@app.route("/progress", methods=["POST"])
+def log_progress():
+    """Log weekly adherence for a client.
+
+    Expected JSON body::
+
+        {
+            "client_name": "John",
+            "week": "Week 10 - 2026",
+            "adherence": 85
+        }
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    if not data.get("client_name"):
+        return jsonify({"error": "client_name is required"}), 400
+    if data["client_name"] not in clients_db:
+        return jsonify({"error": f"Client '{data['client_name']}' not found"}), 404
+    if not data.get("week"):
+        return jsonify({"error": "week is required"}), 400
+    adherence = data.get("adherence", 0)
+    if not isinstance(adherence, (int, float)) or not (0 <= adherence <= 100):
+        return jsonify({"error": "adherence must be a number between 0 and 100"}), 400
+
+    entry = {
+        "client_name": data["client_name"],
+        "week": data["week"],
+        "adherence": int(adherence),
+    }
+    progress_db.append(entry)
+    return jsonify({"message": "Progress logged", "entry": entry}), 201
+
+
+# ---------------------------------------------------------------------------
+# Routes — Calorie estimation utility
+# ---------------------------------------------------------------------------
+
+@app.route("/calculate_calories", methods=["POST"])
+def estimate_calories():
+    """Estimate daily calorie needs.
+
+    Expected JSON body::
+
+        {
+            "weight": 75.0,
+            "program": "Fat Loss"
+        }
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    weight = data.get("weight", 0)
+    program = data.get("program", "")
+    if not isinstance(weight, (int, float)) or weight <= 0:
+        return jsonify({"error": "Weight must be a positive number"}), 400
+    if program not in PROGRAMS:
+        return jsonify({"error": f"Unknown program '{program}'"}), 400
+
+    calories = calculate_calories(weight, program)
+    return jsonify({"weight": weight, "program": program, "estimated_calories": calories}), 200
 
 
 if __name__ == "__main__":
