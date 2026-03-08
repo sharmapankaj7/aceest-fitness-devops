@@ -270,10 +270,5 @@ Response:
 
 ## 👤 Author
 
-**Pankaj Sharma** — Junior DevOps Engineer, ACEest Fitness & Gym
+**Pankaj Sharma**
 
----
-
-## 📄 License
-
-This project is developed as part of a DevOps academic assignment.
