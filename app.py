@@ -55,7 +55,7 @@ def index():
     """Health-check / welcome endpoint."""
     return jsonify({
         "application": "ACEest Fitness & Gym",
-        "version": "3.0.0",
+        "version": "3.2.4",
         "status": "running",
     })
 
