@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Blue-Green Service — Routes traffic to active slot (blue or green)
+# ---------------------------------------------------------------------------
+# Switch traffic:
+#   To GREEN: kubectl patch svc aceest-bg-svc -n aceest-fitness -p '{"spec":{"selector":{"slot":"green"}}}'
+#   To BLUE:  kubectl patch svc aceest-bg-svc -n aceest-fitness -p '{"spec":{"selector":{"slot":"blue"}}}'
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-bg-svc
+  namespace: aceest-fitness
+  labels:
+    strategy: blue-green
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness
+    slot: blue            # <-- Change to "green" to switch traffic
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 30082

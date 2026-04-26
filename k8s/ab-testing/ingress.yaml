@@ -1,0 +1,61 @@
+# ---------------------------------------------------------------------------
+# A/B Testing — NGINX Ingress with Header-Based Routing
+# ---------------------------------------------------------------------------
+# Prerequisites: Enable NGINX Ingress on minikube:
+#   minikube addons enable ingress
+#
+# Routing logic:
+#   - Requests with header "X-Version: B"  → aceest-version-b-svc (new version)
+#   - All other requests                   → aceest-version-a-svc (stable)
+#
+# Test:
+#   curl http://<minikube-ip>/             → Version A response
+#   curl -H "X-Version: B" http://<minikube-ip>/  → Version B response
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-main
+  namespace: aceest-fitness
+  labels:
+    strategy: ab-testing
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-version-a-svc
+                port:
+                  number: 80
+---
+# Canary Ingress — routes header-matched traffic to Version B
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-canary
+  namespace: aceest-fitness
+  labels:
+    strategy: ab-testing
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Version"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "B"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-version-b-svc
+                port:
+                  number: 80

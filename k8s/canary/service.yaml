@@ -1,0 +1,22 @@
+# ---------------------------------------------------------------------------
+# Canary Service — Shared by both stable and canary pods
+# ---------------------------------------------------------------------------
+# Selects on app=aceest-fitness only (not track label), so both stable and
+# canary pods receive traffic. Traffic split is proportional to replica count.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-canary-svc
+  namespace: aceest-fitness
+  labels:
+    strategy: canary
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness        # Matches BOTH stable and canary pods
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 30083

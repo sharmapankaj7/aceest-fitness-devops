@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Canary Deployment — Canary (new version, small traffic share)
+# ---------------------------------------------------------------------------
+# Runs 1 replica of the new version. Since the Service selects on
+# app=aceest-fitness (shared label), traffic splits ~4:1 (stable:canary).
+#
+# Promote:  Scale canary up, scale stable down, then update stable image.
+# Rollback: kubectl delete -f canary-deployment.yaml
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-canary
+  namespace: aceest-fitness
+  labels:
+    app: aceest-fitness
+    track: canary
+    strategy: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        track: canary
+        version: v4.0.0
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: sharmapankaj7/aceest-fitness:v4.0.0
+          ports:
+            - containerPort: 5000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

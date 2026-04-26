@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Blue-Green Deployment — BLUE (Stable / Current Version)
+# ---------------------------------------------------------------------------
+# The "blue" environment runs the current stable version.
+# Traffic is routed here via the Service selector: slot=blue
+#
+# To switch traffic to green: kubectl apply -f service.yaml  (after updating selector)
+# To rollback to blue:        change Service selector back to slot=blue
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-blue
+  namespace: aceest-fitness
+  labels:
+    app: aceest-fitness
+    slot: blue
+    strategy: blue-green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      slot: blue
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        slot: blue
+        version: v3.2.4
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: sharmapankaj7/aceest-fitness:v3.2.4
+          ports:
+            - containerPort: 5000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

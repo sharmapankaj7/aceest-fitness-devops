@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# Shadow Deployment — NGINX Ingress with Traffic Mirroring
+# ---------------------------------------------------------------------------
+# Prerequisites: Enable NGINX Ingress on minikube:
+#   minikube addons enable ingress
+#
+# How it works:
+#   - All user requests are served by aceest-primary-svc (stable version)
+#   - A copy of each request is mirrored to aceest-shadow-svc (new version)
+#   - Shadow responses are discarded — users only see primary responses
+#
+# This allows testing the new version under real production load without
+# any risk to end users.
+#
+# Note: NGINX Ingress supports traffic mirroring via the mirror annotations.
+# For full-featured mirroring, Istio VirtualService with mirror: is recommended.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-shadow-ingress
+  namespace: aceest-fitness
+  labels:
+    strategy: shadow
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/mirror-target: "http://aceest-shadow-svc.aceest-fitness.svc.cluster.local"
+    nginx.ingress.kubernetes.io/mirror-request-body: "on"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /shadow
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-primary-svc
+                port:
+                  number: 80

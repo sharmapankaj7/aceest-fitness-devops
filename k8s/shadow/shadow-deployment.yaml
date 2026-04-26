@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Shadow Deployment — Shadow (receives mirrored traffic)
+# ---------------------------------------------------------------------------
+# This deployment receives a copy of all production traffic for testing.
+# Responses from the shadow are discarded — they do not reach end users.
+# Useful for testing a new version under real-world load without risk.
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-shadow
+  namespace: aceest-fitness
+  labels:
+    app: aceest-fitness
+    role: shadow
+    strategy: shadow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      role: shadow
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        role: shadow
+        version: v4.0.0
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: sharmapankaj7/aceest-fitness:v4.0.0
+          ports:
+            - containerPort: 5000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-shadow-svc
+  namespace: aceest-fitness
+  labels:
+    role: shadow
+    strategy: shadow
+spec:
+  type: ClusterIP
+  selector:
+    app: aceest-fitness
+    role: shadow
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000

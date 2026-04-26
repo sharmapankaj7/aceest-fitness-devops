@@ -11,6 +11,11 @@ pipeline {
     environment {
         APP_NAME    = 'aceest-fitness'
         PYTHON_VER  = '3.12'
+        SCANNER_HOME = tool 'SonarQubeScanner'
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')   // Poll GitHub every 5 minutes for changes
     }
 
     stages {
@@ -41,6 +46,24 @@ pipeline {
                     . venv/bin/activate
                     flake8 app.py --count --select=E9,F63,F7,F82 --show-source --statistics
                 '''
+            }
+        }
+
+        stage('SonarCloud Analysis') {
+            steps {
+                echo '📊 Running SonarCloud static code analysis...'
+                withSonarQubeEnv('SonarCloud') {
+                    sh "${SCANNER_HOME}/bin/sonar-scanner"
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                echo '🚦 Waiting for SonarCloud Quality Gate...'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
