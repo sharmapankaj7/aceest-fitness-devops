@@ -1,8 +1,5 @@
 # ACEest Fitness & Gym — DevOps CI/CD Pipeline Assignment
 
-**Course:** BITS Pilani — DevOps  
-**Student:** Pankaj Sharma  
-**Date:** April 2026  
 **Repository:** [github.com/sharmapankaj7/aceest-fitness-devops](https://github.com/sharmapankaj7/aceest-fitness-devops)  
 **Docker Hub:** [hub.docker.com/r/sharmapankaj7/aceest-fitness](https://hub.docker.com/r/sharmapankaj7/aceest-fitness)  
 
