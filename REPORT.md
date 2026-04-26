@@ -59,6 +59,51 @@ All 52 tests pass with 100% success rate, verified both locally and inside the D
 
 ## 3. CI/CD Pipeline Architecture
 
+The project employs a **dual-pipeline** CI/CD strategy — Jenkins for local development feedback and GitHub Actions for cloud-based deployment to Docker Hub. The diagram below illustrates the complete flow from code commit to Kubernetes deployment.
+
+```mermaid
+flowchart LR
+    subgraph Developer
+        A["Code Commit"] --> B["Git Push"]
+    end
+
+    subgraph GitHub
+        B --> C["GitHub Repository"]
+    end
+
+    subgraph Jenkins["Jenkins Pipeline (Local CI)"]
+        C -->|Poll SCM| D["Checkout"]
+        D --> E["Lint (Flake8)"]
+        E --> F["SonarCloud Analysis"]
+        F --> G["Quality Gate"]
+        G --> H["Pytest (52 tests)"]
+        H --> I["Docker Build"]
+        I --> J["Container Test"]
+    end
+
+    subgraph GHA["GitHub Actions (Cloud CI/CD)"]
+        C -->|Push/PR| K["Build & Lint"]
+        K --> L["Pytest"]
+        L --> M["Docker Build"]
+        M --> N["Container Pytest"]
+        N --> O["Push to Docker Hub"]
+    end
+
+    subgraph Registry
+        O --> P["Docker Hub\nlatest / v3.2.4 / build-N"]
+    end
+
+    subgraph Kubernetes["Minikube Cluster"]
+        P --> Q["Rolling Update"]
+        P --> R["Blue-Green"]
+        P --> S["Canary"]
+        P --> T["A/B Testing"]
+        P --> U["Shadow"]
+    end
+
+    F -.->|Scan Results| V["SonarCloud\nQuality Gate"]
+```
+
 ### 3.1 Jenkins Pipeline (Local CI)
 
 The Jenkins pipeline is defined in a declarative `Jenkinsfile` with Poll SCM (`H/5 * * * *`) triggering. It runs inside a Docker container on port 8080 with the following stages:
@@ -76,13 +121,13 @@ The screenshot below shows the Jenkins pipeline dashboard with build history. Bu
 
 ![Jenkins Pipeline](screenshots/JenkinsPipeline.png)
 
-### 2.2 SonarCloud Code Quality
+### 3.2 SonarCloud Code Quality
 
 SonarCloud is integrated into both Jenkins and the codebase via `sonar-project.properties`. It analyses the project for code smells, bugs, security vulnerabilities, and code duplication.
 
 ![SonarCloud Quality Gate](screenshots/SonarQube.png)
 
-### 2.3 GitHub Actions Pipeline (Cloud CI/CD)
+### 3.3 GitHub Actions Pipeline (Cloud CI/CD)
 
 The GitHub Actions workflow (`.github/workflows/main.yml`) provides cloud-based CI/CD with five stages:
 
@@ -96,7 +141,7 @@ The screenshot shows all 5 jobs completing successfully with the pipeline graph 
 
 ![GitHub Actions Pipeline](screenshots/GithubActions.png)
 
-### 2.4 Docker Hub Registry
+### 3.4 Docker Hub Registry
 
 Docker images are automatically pushed to Docker Hub on every merge to `main`, with three tags: `latest`, semantic version (`v3.2.4`), and build number (`build-6`).
 
@@ -190,14 +235,67 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ## 6. Challenges & Mitigations
 
-| # | Challenge | Mitigation |
-|---|-----------|-----------|
-| 1 | **ARM64 architecture** — Windows ARM64 machine caused "Exec format error" for amd64 binaries (kubectl, minikube). | Downloaded ARM64-specific binaries for both tools in WSL. |
-| 2 | **Minikube on Windows** — Docker-in-Docker TLS handshake failures when running Minikube natively on Windows. | Switched to WSL Ubuntu 24.04 as the Minikube host with the Docker driver. |
-| 3 | **Jenkins Python not found** — Default Jenkins LTS image lacks Python. | Installed python3, pip, venv, and docker.io inside the Jenkins container via `apt-get`. |
-| 4 | **SonarCloud Quality Gate NONE** — Initial scan returned status NONE, causing pipeline abort. | Changed Quality Gate stage to a script block that only fails on explicit ERROR status. |
-| 5 | **Docker socket permissions** — Jenkins container couldn't access Docker daemon. | Added jenkins user to docker group and set `chmod 666` on the Docker socket. |
-| 6 | **ErrImageNeverPull in Minikube** — Images built in host Docker were not available inside Minikube's Docker daemon. | Used `minikube image load` to transfer images and set `imagePullPolicy: Never` in all manifests. |
+Several technical challenges were encountered during the implementation of the CI/CD pipeline and Kubernetes deployment. Each challenge required investigation, root-cause analysis, and an appropriate mitigation strategy. These are documented below as they reflect real-world DevOps problem-solving.
+
+### 6.1 ARM64 Architecture Compatibility
+
+**Problem:** The development machine runs Windows 11 on ARM64 architecture. Most DevOps tools (kubectl, minikube) distribute amd64 binaries by default. Running these inside WSL resulted in `Exec format error: cannot execute binary file` — the Linux kernel refused to run x86_64 binaries on the ARM64 processor.
+
+**Root Cause:** Binary architecture mismatch. The default download links for kubectl and minikube pointed to `linux/amd64` builds, which are incompatible with the `aarch64` kernel running inside WSL2.
+
+**Mitigation:** Downloaded ARM64-specific (`linux/arm64`) binaries for both kubectl and minikube directly from the official release pages. Verified architecture with `file $(which kubectl)` to confirm `ELF 64-bit LSB executable, ARM aarch64`.
+
+**Lesson Learned:** Always verify the host machine architecture (`uname -m`) before downloading DevOps tooling, especially in heterogeneous environments.
+
+### 6.2 Minikube Docker-in-Docker TLS Failures
+
+**Problem:** Running `minikube start --driver=docker` on native Windows (PowerShell) consistently failed with TLS handshake timeout errors. The Minikube VM could not establish a secure connection with the Docker Desktop daemon.
+
+**Root Cause:** Docker Desktop on Windows uses a named pipe (`//./pipe/docker_engine`) for communication. When Minikube attempted to start a Docker-in-Docker cluster, the nested Docker daemon inside the Minikube VM could not resolve the TLS certificates from the host Docker daemon, leading to connection timeouts.
+
+**Mitigation:** Switched the entire Minikube setup to run inside **WSL2 Ubuntu 24.04**, where Docker communicates via a Unix socket (`/var/run/docker.sock`). This eliminated the TLS layer and allowed Minikube to start reliably with `minikube start --driver=docker`.
+
+**Lesson Learned:** WSL2 provides a more Unix-native environment for container orchestration tools. Running Minikube inside WSL avoids many Windows-specific Docker networking issues.
+
+### 6.3 Jenkins Container Missing Python Runtime
+
+**Problem:** The Jenkins declarative pipeline failed at the "Setup Environment" stage with `python3: not found`. The official `jenkins/jenkins:lts` Docker image is based on Debian but does not include Python.
+
+**Root Cause:** The Jenkins LTS image is intentionally minimal — it includes only Java and Jenkins. Build tools like Python, Node.js, or Docker CLI must be installed separately.
+
+**Mitigation:** Executed `docker exec -u root jenkins apt-get install -y python3 python3-pip python3-venv docker.io` to install Python and Docker inside the running Jenkins container. For a production setup, a custom Jenkins Dockerfile extending the LTS image with pre-installed tools would be preferable.
+
+**Lesson Learned:** Always audit the base image of CI/CD runners to ensure required build tools are available. Custom Docker images for Jenkins agents prevent repeated manual setup.
+
+### 6.4 SonarCloud Quality Gate Returning NONE
+
+**Problem:** The Jenkins pipeline aborted at the Quality Gate stage because `waitForQualityGate()` returned status `NONE` instead of `OK` or `ERROR`. This happened on the first scan when SonarCloud had not yet computed a quality gate result.
+
+**Root Cause:** SonarCloud processes analysis results asynchronously. On the very first scan of a new project, the quality gate computation may not be ready when Jenkins polls for the result, returning `NONE` as a transient status.
+
+**Mitigation:** Replaced the `waitForQualityGate abortPipeline: true` directive with a `script` block that explicitly checks the status — it only fails the build on `ERROR`, while treating `NONE` and `OK` as acceptable states. This makes the pipeline resilient to first-scan timing issues.
+
+**Lesson Learned:** Quality gate integrations should handle transient states gracefully. A strict pass/fail binary is insufficient for asynchronous analysis tools.
+
+### 6.5 Docker Socket Permission Denied in Jenkins
+
+**Problem:** The Docker Build stage in Jenkins failed with `permission denied while trying to connect to the Docker daemon socket at /var/run/docker.sock`. Despite Docker being installed inside the container, the `jenkins` user lacked permission to access the Docker socket.
+
+**Root Cause:** The Docker socket (`/var/run/docker.sock`) is mounted from the host into the Jenkins container, but it is owned by `root:docker`. The `jenkins` user is neither root nor a member of the `docker` group inside the container.
+
+**Mitigation:** Added the `jenkins` user to the `docker` group and relaxed socket permissions: `groupadd -f docker && usermod -aG docker jenkins && chmod 666 /var/run/docker.sock`. In production, a more secure approach would use Docker-out-of-Docker with proper group ID mapping.
+
+**Lesson Learned:** Container-based CI/CD runners that need Docker access require careful permission management. Socket mounting is convenient but introduces security considerations that must be addressed.
+
+### 6.6 ErrImageNeverPull in Minikube
+
+**Problem:** After deploying manifests with `imagePullPolicy: Never`, all pods entered `ErrImageNeverPull` status — Kubernetes could not find the Docker images locally.
+
+**Root Cause:** The `docker build` command ran against the **host's** Docker daemon, not Minikube's internal Docker daemon. Minikube runs its own Docker instance inside the VM, which has a separate image cache. Images built on the host are invisible to Minikube unless explicitly transferred.
+
+**Mitigation:** Used `minikube image load sharmapankaj7/aceest-fitness:<tag>` to transfer all three image tags (latest, v3.2.4, v4.0.0) from the host Docker into Minikube's internal registry. After loading, restarted the deployments with `kubectl rollout restart` and all pods started successfully.
+
+**Lesson Learned:** When using `imagePullPolicy: Never` with Minikube, images must be explicitly loaded via `minikube image load` or built inside Minikube's Docker context using `eval $(minikube docker-env)`. The two Docker daemons (host and Minikube) do not share image caches.
 
 ---
 
