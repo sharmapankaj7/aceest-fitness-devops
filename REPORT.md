@@ -42,9 +42,24 @@ The application responds with version and status information on all deployed end
 
 ---
 
-## 2. CI/CD Pipeline Architecture
+## 2. Automated Testing
 
-### 2.1 Jenkins Pipeline (Local CI)
+The application includes a comprehensive **Pytest** test suite with **52 test cases** covering:
+
+- **Unit tests** — Calorie calculation logic, input validation
+- **Integration tests** — All REST API endpoints (CRUD operations for clients, programs, progress)
+- **Edge cases** — Invalid inputs, missing fields, boundary conditions
+- **Data integrity** — Concurrent operations, state consistency
+
+All 52 tests pass with 100% success rate, verified both locally and inside the Docker container.
+
+![Pytest Results — 52 Tests Passing](screenshots/pytest.png)
+
+---
+
+## 3. CI/CD Pipeline Architecture
+
+### 3.1 Jenkins Pipeline (Local CI)
 
 The Jenkins pipeline is defined in a declarative `Jenkinsfile` with Poll SCM (`H/5 * * * *`) triggering. It runs inside a Docker container on port 8080 with the following stages:
 
@@ -89,27 +104,27 @@ Docker images are automatically pushed to Docker Hub on every merge to `main`, w
 
 ---
 
-## 3. Kubernetes Deployment
+## 4. Kubernetes Deployment
 
-### 3.1 Cluster Setup
+### 4.1 Cluster Setup
 
 All strategies were deployed and validated on **Minikube v1.38.1** running inside WSL Ubuntu 24.04 with the Docker driver on an ARM64 machine. The NGINX Ingress addon was enabled for header-based and mirror routing.
 
 ![Minikube Status](screenshots/minikubestatus.png)
 
-### 3.2 All Deployments & Pods
+### 4.2 All Deployments & Pods
 
 A total of **10 deployments** and **28 pods** are running across all 5 strategies in the `aceest-fitness` namespace. All pods show `1/1 Ready` with `Running` status and zero restarts.
 
 ![All Pods and Deployments](screenshots/Allpods_deployments.png)
 
-### 3.3 Services & Ingresses
+### 4.3 Services & Ingresses
 
 Eight Kubernetes services (5 NodePort + 3 ClusterIP) and 3 NGINX Ingress resources route traffic to the various deployment strategies.
 
 ![Services and Ingresses](screenshots/svc_ingress.png)
 
-### 3.4 Docker Images in Minikube
+### 4.4 Docker Images in Minikube
 
 Three image tags were loaded into Minikube's internal registry using `minikube image load`, allowing pods to use `imagePullPolicy: Never`.
 
@@ -117,9 +132,9 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ---
 
-## 4. Kubernetes Deployment Strategies
+## 5. Kubernetes Deployment Strategies
 
-### 4.1 Strategy 1 — Rolling Update
+### 5.1 Strategy 1 — Rolling Update
 
 - **Manifest:** `k8s/rolling-update/deployment.yaml`
 - **Config:** 4 replicas, `maxSurge: 1`, `maxUnavailable: 1`
@@ -138,7 +153,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ![Live Rollback](screenshots/LiveRollback.png)
 
-### 4.2 Strategy 2 — Blue-Green Deployment
+### 5.2 Strategy 2 — Blue-Green Deployment
 
 - **Manifests:** `k8s/blue-green/` (blue-deployment, green-deployment, service)
 - **Config:** Blue (v3.2.4, `slot=blue`) and Green (v4.0.0, `slot=green`), 3 replicas each.
@@ -147,7 +162,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ![Blue-Green Deployment](screenshots/BlueGreen.png)
 
-### 4.3 Strategy 3 — Canary Deployment
+### 5.3 Strategy 3 — Canary Deployment
 
 - **Manifests:** `k8s/canary/` (stable-deployment, canary-deployment, service)
 - **Config:** 4 stable replicas (v3.2.4, `track=stable`) + 1 canary replica (v4.0.0, `track=canary`). The service selects on the `app` label only, giving an ~80/20 traffic split by pod ratio.
@@ -155,7 +170,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ![Canary Endpoint](screenshots/canaryEndpoint.png)
 
-### 4.4 Strategy 4 — A/B Testing
+### 5.4 Strategy 4 — A/B Testing
 
 - **Manifests:** `k8s/ab-testing/` (version-a-deployment, version-b-deployment, services, ingress)
 - **Config:** Version A (v3.2.4, 3 replicas) and Version B (v4.0.0, 2 replicas) with separate ClusterIP services. NGINX Ingress routes traffic based on the `X-Version: B` header using canary annotations.
@@ -163,7 +178,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ![A/B Testing](screenshots/ABTesting.png)
 
-### 4.5 Strategy 5 — Shadow (Traffic Mirroring)
+### 5.5 Strategy 5 — Shadow (Traffic Mirroring)
 
 - **Manifests:** `k8s/shadow/` (primary-deployment, shadow-deployment, ingress)
 - **Config:** Primary (v3.2.4, 3 replicas) serves real traffic via NodePort 30084. Shadow (v4.0.0, 2 replicas) receives mirrored traffic via NGINX `mirror-target` annotation. Shadow responses are discarded — no user impact.
@@ -173,7 +188,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ---
 
-## 5. Challenges & Mitigations
+## 6. Challenges & Mitigations
 
 | # | Challenge | Mitigation |
 |---|-----------|-----------|
@@ -186,7 +201,7 @@ Three image tags were loaded into Minikube's internal registry using `minikube i
 
 ---
 
-## 6. Version Control & Tagging
+## 7. Version Control & Tagging
 
 The project uses Git with annotated tags to track version progression:
 
@@ -199,7 +214,7 @@ The project uses Git with annotated tags to track version progression:
 
 ---
 
-## 7. Repository Structure
+## 8. Repository Structure
 
 ```
 aceest-fitness-devops/
@@ -225,7 +240,7 @@ aceest-fitness-devops/
 
 ---
 
-## 8. Key Outcomes
+## 9. Key Outcomes
 
 1. **52 automated tests** with 100% pass rate across unit, integration, and edge case categories.
 2. **Dual CI/CD pipelines** — Jenkins for local development feedback, GitHub Actions for cloud-based deployment.
@@ -237,6 +252,6 @@ aceest-fitness-devops/
 
 ---
 
-## 9. Conclusion
+## 10. Conclusion
 
 This project demonstrates a production-grade CI/CD pipeline from code commit to Kubernetes deployment. The dual-pipeline approach (Jenkins + GitHub Actions) provides both local and cloud-based automation. Five deployment strategies were successfully implemented and validated, each serving a different use case — from zero-downtime rolling updates to risk-free shadow testing. The pipeline enforces code quality through SonarCloud, ensures reliability through 52 automated tests, and follows security best practices with non-root containers and resource constraints.
