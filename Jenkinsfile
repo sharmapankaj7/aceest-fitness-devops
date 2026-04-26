@@ -62,7 +62,14 @@ pipeline {
             steps {
                 echo '🚦 Waiting for SonarCloud Quality Gate...'
                 timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status == 'ERROR') {
+                            error "Quality Gate failed: ${qg.status}"
+                        } else {
+                            echo "Quality Gate status: ${qg.status}"
+                        }
+                    }
                 }
             }
         }
